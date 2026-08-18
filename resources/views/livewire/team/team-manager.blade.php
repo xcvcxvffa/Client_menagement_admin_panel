@@ -29,14 +29,23 @@ mount(function () {
 });
 
 with(function () {
+    // Get roles, deduplicated by name, excluding 'Owner' from assignable roles.
+    // Business-specific roles take priority over global ones.
+    $roles = \Spatie\Permission\Models\Role::where(function ($q) {
+                    $q->whereNull('business_id')
+                      ->orWhere('business_id', Auth::user()->current_business_id);
+                })
+                ->whereNotIn('name', ['Owner'])
+                ->orderByRaw("FIELD(name, 'Admin') DESC") // Admin first
+                ->get()
+                ->unique('name')
+                ->values();
+
     return [
         'teamMembers' => TeamMember::with('user')
             ->where('business_id', Auth::user()->current_business_id)
             ->get(),
-        'availableRoles' => \Spatie\Permission\Models\Role::where(function ($q) {
-                                $q->whereNull('business_id')
-                                  ->orWhere('business_id', Auth::user()->current_business_id);
-                            })->get(),
+        'availableRoles' => $roles,
     ];
 });
 
@@ -416,8 +425,20 @@ $removeMember = function ($teamMemberId) {
                                 <svg class="w-4 h-4 mr-1.5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
                                 Role *
                             </label>
-                            <x-custom-select wire:model="editingMemberRole" placeholder="Select Role"
-                                :options="collect($availableRoles)->map(fn($r) => ['id' => $r->name, 'name' => $r->name])->toArray()" />
+                            <div class="relative">
+                                <select wire:model="editingMemberRole"
+                                        class="w-full px-4 py-2.5 pr-10 border-2 border-gray-200 hover:border-gray-300 bg-white dark:bg-gray-800 dark:border-gray-700 rounded-xl text-sm font-medium text-gray-900 dark:text-white focus:ring-0 focus:border-black focus:outline-none transition-colors appearance-none cursor-pointer shadow-sm">
+                                    <option value="" disabled>Select a role</option>
+                                    @foreach($availableRoles as $availableRole)
+                                        <option value="{{ $availableRole->name }}">{{ $availableRole->name }}</option>
+                                    @endforeach
+                                </select>
+                                <div class="pointer-events-none absolute inset-y-0 right-3 flex items-center">
+                                    <svg class="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                </div>
+                            </div>
                             @error('editingMemberRole') <span class="text-xs text-rose-500 mt-1 block">{{ $message }}</span> @enderror
                         </div>
                     </div>
