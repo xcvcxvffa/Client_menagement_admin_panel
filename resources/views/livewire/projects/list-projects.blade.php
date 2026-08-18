@@ -1931,7 +1931,7 @@ new class extends Component {
                                             </div>
 
                                             <div class="flex justify-end gap-2.5 pt-1">
-                                                <button type="button" @click="showPaymentForm = false; $wire.payment_amount = ''; $wire.payment_notes = '';" 
+                                                <button type="button" @click="showPaymentForm = false; $wire.set('payment_amount', ''); $wire.set('payment_notes', '');" 
                                                         class="px-4 py-2 rounded-xl border border-gray-200 text-xs font-bold text-gray-700 hover:bg-gray-50 transition-colors">
                                                     Cancel
                                                 </button>
@@ -2453,7 +2453,7 @@ new class extends Component {
                                         if (typeof flatpickr !== 'undefined') {
                                             this.fp = flatpickr(inputEl, {
                                                 dateFormat: 'j M Y',
-                                                defaultDate: $wire.invoice_issue_date || new Date(),
+                                                defaultDate: ($wire.get ? $wire.get('invoice_issue_date') : $wire.invoice_issue_date) || new Date(),
                                                 disableMobile: true,
                                                 showMonths: 1,
                                                 monthSelectorType: 'static',
