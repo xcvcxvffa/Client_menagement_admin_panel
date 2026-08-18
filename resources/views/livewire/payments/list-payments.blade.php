@@ -45,23 +45,29 @@ $updatedPaymentClientId = function () {
     }
 };
 
-// Fetch Clients for filters and modal
+// Fetch Clients for filters and modal (scoped to business)
 $clients = computed(function () {
-    return Client::orderBy('name')->get();
+    $businessId = Auth::user()->current_business_id;
+    return Client::where('business_id', $businessId)->orderBy('name')->get();
 });
 
-// Fetch unpaid/partially paid invoices for the selected client
+// Fetch unpaid/partially paid invoices for the selected client (scoped to business)
 $pendingInvoices = computed(function () {
     if (!$this->payment_client_id) return collect();
+    $businessId = Auth::user()->current_business_id;
     
-    return Invoice::where('client_id', $this->payment_client_id)
+    return Invoice::where('business_id', $businessId)
+        ->where('client_id', $this->payment_client_id)
         ->whereIn('status', ['draft', 'sent', 'partial'])
         ->get();
 });
 
-// Fetch Payments with Filtering
+// Fetch Payments with Filtering (scoped to business)
 $payments = computed(function () {
-    $query = Payment::with(['invoice.client', 'invoice.project']);
+    $businessId = Auth::user()->current_business_id;
+    $query = Payment::whereHas('invoice', function ($q) use ($businessId) {
+        $q->where('business_id', $businessId);
+    })->with(['invoice.client', 'invoice.project']);
 
     if ($this->search) {
         $query->where(function ($q) {
@@ -99,21 +105,27 @@ $payments = computed(function () {
     return $query->orderBy('paid_at', 'desc')->get();
 });
 
-// Stat Calculations
+// Stat Calculations (scoped to business)
 $stats = computed(function () {
-    // Total Revenue All Time
-    $totalRevenue = Payment::sum('amount');
+    $businessId = Auth::user()->current_business_id;
+
+    // Total Revenue All Time for this business
+    $totalRevenue = Payment::whereHas('invoice', function ($q) use ($businessId) {
+        $q->where('business_id', $businessId);
+    })->sum('amount');
     
-    // Revenue This Month
-    $revenueThisMonth = Payment::whereMonth('paid_at', now()->month)
+    // Revenue This Month for this business
+    $revenueThisMonth = Payment::whereHas('invoice', function ($q) use ($businessId) {
+        $q->where('business_id', $businessId);
+    })->whereMonth('paid_at', now()->month)
         ->whereYear('paid_at', now()->year)
         ->sum('amount');
         
-    // Outstanding Invoices (where status is not paid)
-    $unpaidInvoices = Invoice::where('status', '!=', 'paid')->get();
+    // Outstanding Invoices for this business (where status is not paid)
+    $unpaidInvoices = Invoice::where('business_id', $businessId)->where('status', '!=', 'paid')->get();
     $outstanding = 0;
     foreach($unpaidInvoices as $inv) {
-        $paid = $inv->payments()->sum('amount');
+        $paid = $inv->amount_paid;
         $outstanding += max(0, $inv->total - $paid);
     }
 
@@ -127,16 +139,17 @@ $stats = computed(function () {
 $addPayment = function () {
     \Illuminate\Support\Facades\Gate::authorize('create payments');
     
+    $businessId = Auth::user()->current_business_id;
     $this->validate([
-        'payment_client_id' => 'required|exists:clients,id',
-        'payment_invoice_id' => 'required|exists:invoices,id',
+        'payment_client_id' => 'required|exists:clients,id,business_id,' . $businessId,
+        'payment_invoice_id' => 'required|exists:invoices,id,business_id,' . $businessId,
         'payment_amount' => 'required|numeric|min:0.01',
         'payment_method' => 'required|string',
         'payment_date' => 'required|date',
         'payment_notes' => 'nullable|string',
     ]);
 
-    $invoice = Invoice::find($this->payment_invoice_id);
+    $invoice = Invoice::where('business_id', $businessId)->find($this->payment_invoice_id);
     if ($invoice) {
         $payment = $invoice->payments()->create([
             'amount' => $this->payment_amount,
@@ -146,8 +159,8 @@ $addPayment = function () {
         ]);
         
         // Update Invoice status if fully paid
-        $totalPaid = $invoice->payments()->sum('amount');
-        if ($totalPaid >= $invoice->total) {
+        $totalPaid = round((float) $invoice->payments()->sum('amount'), 2);
+        if ($totalPaid >= round((float) $invoice->total, 2)) {
             $invoice->update(['status' => 'paid', 'amount_paid' => $totalPaid]);
         } else {
             $invoice->update(['status' => 'partial', 'amount_paid' => $totalPaid]);
@@ -168,7 +181,11 @@ $addPayment = function () {
 $openEditPayment = function ($id) {
     \Illuminate\Support\Facades\Gate::authorize('edit payments');
     
-    $payment = Payment::with('invoice')->find($id);
+    $businessId = Auth::user()->current_business_id;
+    $payment = Payment::whereHas('invoice', function ($q) use ($businessId) {
+        $q->where('business_id', $businessId);
+    })->with('invoice')->find($id);
+
     if ($payment) {
         $this->edit_payment_id = $payment->id;
         $this->payment_client_id = $payment->invoice->client_id;
@@ -185,16 +202,22 @@ $openEditPayment = function ($id) {
 $updatePayment = function () {
     \Illuminate\Support\Facades\Gate::authorize('edit payments');
     
+    $businessId = Auth::user()->current_business_id;
     $this->validate([
-        'payment_invoice_id' => 'required|exists:invoices,id',
+        'payment_invoice_id' => 'required|exists:invoices,id,business_id,' . $businessId,
         'payment_amount' => 'required|numeric|min:0.01',
         'payment_method' => 'required|string',
         'payment_date' => 'required|date',
         'payment_notes' => 'nullable|string',
     ]);
 
-    $payment = Payment::find($this->edit_payment_id);
+    $payment = Payment::whereHas('invoice', function ($q) use ($businessId) {
+        $q->where('business_id', $businessId);
+    })->find($this->edit_payment_id);
+
     if ($payment) {
+        $oldInvoice = $payment->invoice;
+
         $payment->update([
             'invoice_id' => $this->payment_invoice_id,
             'amount' => $this->payment_amount,
@@ -203,13 +226,24 @@ $updatePayment = function () {
             'notes' => $this->payment_notes,
         ]);
         
-        // Re-calculate invoice status
-        $invoice = Invoice::find($this->payment_invoice_id);
-        $totalPaid = $invoice->payments()->sum('amount');
-        if ($totalPaid >= $invoice->total) {
-            $invoice->update(['status' => 'paid', 'amount_paid' => $totalPaid]);
-        } else {
-            $invoice->update(['status' => 'partial', 'amount_paid' => $totalPaid]);
+        // Re-calculate old invoice status
+        if ($oldInvoice) {
+            $oldPaid = round((float) $oldInvoice->payments()->sum('amount'), 2);
+            $oldInvoice->update([
+                'amount_paid' => $oldPaid,
+                'status'      => ($oldInvoice->total > 0 && $oldPaid >= $oldInvoice->total) ? 'paid' : ($oldPaid > 0 ? 'partial' : 'sent'),
+            ]);
+        }
+
+        // Re-calculate new/current invoice status
+        $invoice = Invoice::where('business_id', $businessId)->find($this->payment_invoice_id);
+        if ($invoice) {
+            $totalPaid = round((float) $invoice->payments()->sum('amount'), 2);
+            if ($totalPaid >= round((float) $invoice->total, 2)) {
+                $invoice->update(['status' => 'paid', 'amount_paid' => $totalPaid]);
+            } else {
+                $invoice->update(['status' => 'partial', 'amount_paid' => $totalPaid]);
+            }
         }
         
         $this->showEditPaymentModal = false;
@@ -227,16 +261,20 @@ $deletePayment = function () {
     if (!$this->confirmTrashId) return;
     \Illuminate\Support\Facades\Gate::authorize('delete payments');
     
-    $payment = Payment::find($this->confirmTrashId);
+    $businessId = Auth::user()->current_business_id;
+    $payment = Payment::whereHas('invoice', function ($q) use ($businessId) {
+        $q->where('business_id', $businessId);
+    })->find($this->confirmTrashId);
+
     if ($payment) {
         $invoiceId = $payment->invoice_id;
         $payment->delete();
         
         // Re-calculate invoice status
-        $invoice = Invoice::find($invoiceId);
+        $invoice = Invoice::where('business_id', $businessId)->find($invoiceId);
         if ($invoice) {
-            $totalPaid = $invoice->payments()->sum('amount');
-            if ($totalPaid >= $invoice->total) {
+            $totalPaid = round((float) $invoice->payments()->sum('amount'), 2);
+            if ($totalPaid >= round((float) $invoice->total, 2)) {
                 $invoice->update(['status' => 'paid', 'amount_paid' => $totalPaid]);
             } else if ($totalPaid > 0) {
                 $invoice->update(['status' => 'partial', 'amount_paid' => $totalPaid]);

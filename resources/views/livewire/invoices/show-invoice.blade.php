@@ -19,12 +19,20 @@ state([
 ]);
 
 mount(function (Invoice $invoice) {
+    if ($invoice->business_id !== Auth::user()->current_business_id) {
+        abort(403, 'Unauthorized action.');
+    }
     $this->invoice = $invoice->load(['client', 'items', 'payments']);
     $this->payment_date = now()->format('Y-m-d');
-    $this->payment_amount = $this->invoice->total - $this->invoice->amount_paid;
+    $this->payment_amount = round($this->invoice->total - $this->invoice->amount_paid, 2);
 });
 
 $markAs = function ($status) {
+    \Illuminate\Support\Facades\Gate::authorize('edit invoices');
+    if ($this->invoice->business_id !== Auth::user()->current_business_id) {
+        abort(403, 'Unauthorized action.');
+    }
+
     if (in_array($status, ['draft', 'sent', 'cancelled'])) {
         $this->invoice->update(['status' => $status]);
 
@@ -44,6 +52,11 @@ $openPaymentModal = function () {
 };
 
 $recordPayment = function () {
+    \Illuminate\Support\Facades\Gate::authorize('create payments');
+    if ($this->invoice->business_id !== Auth::user()->current_business_id) {
+        abort(403, 'Unauthorized action.');
+    }
+
     $this->validate([
         'payment_amount' => 'required|numeric|min:0.1|max:' . ($this->invoice->total - $this->invoice->amount_paid + 0.01),
         'payment_date' => 'required|date',
@@ -54,7 +67,7 @@ $recordPayment = function () {
 
     $payment = Payment::create([
         'invoice_id' => $this->invoice->id,
-        'amount' => $this->payment_amount,
+        'amount' => round($this->payment_amount, 2),
         'paid_at' => $this->payment_date,
         'payment_method' => $this->payment_method,
         'transaction_reference' => $this->transaction_reference,
@@ -62,10 +75,10 @@ $recordPayment = function () {
     ]);
 
     // Update invoice total paid
-    $newAmountPaid = $this->invoice->amount_paid + $this->payment_amount;
+    $newAmountPaid = round($this->invoice->amount_paid + $this->payment_amount, 2);
     $status = $this->invoice->status;
     
-    if ($newAmountPaid >= ($this->invoice->total - 0.01)) { // float precision
+    if ($newAmountPaid >= round($this->invoice->total, 2)) {
         $status = 'paid';
     } elseif ($status === 'draft') {
         $status = 'sent'; // Automatically mark sent if it was draft and got paid partially
@@ -93,15 +106,19 @@ $recordPayment = function () {
 };
 
 $deletePayment = function ($paymentId) {
+    \Illuminate\Support\Facades\Gate::authorize('delete payments');
+    if ($this->invoice->business_id !== Auth::user()->current_business_id) {
+        abort(403, 'Unauthorized action.');
+    }
+
     $payment = Payment::find($paymentId);
     if ($payment && $payment->invoice_id === $this->invoice->id) {
         $amount = $payment->amount;
         $payment->delete();
         
-        $newAmountPaid = $this->invoice->amount_paid - $amount;
-        $status = $newAmountPaid < $this->invoice->total ? 'sent' : 'paid';
-        if ($newAmountPaid <= 0 && $this->invoice->status !== 'sent') {
-             // If we want to revert fully, we'd maybe leave it as sent
+        $newAmountPaid = round($this->invoice->amount_paid - $amount, 2);
+        $status = $newAmountPaid < round($this->invoice->total, 2) ? 'sent' : 'paid';
+        if ($newAmountPaid <= 0) {
              $status = 'sent';
         }
         

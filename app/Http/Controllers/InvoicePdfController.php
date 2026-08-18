@@ -10,6 +10,10 @@ class InvoicePdfController extends Controller
 {
     public function download(Invoice $invoice)
     {
+        if ($invoice->business_id !== auth()->user()->current_business_id) {
+            abort(403, 'Unauthorized action.');
+        }
+
         $invoice->load(['client', 'items', 'payments']);
         
         $pdf = Pdf::loadView('pdf.invoice', compact('invoice'));

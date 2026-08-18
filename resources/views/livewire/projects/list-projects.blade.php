@@ -86,11 +86,19 @@ new class extends Component {
     public $invoiceLineItems = [];
     public $invoice_tax_rate = 0;
 
+    // Edit Invoice Modal
+    public $showEditInvoiceModal = false;
+    public $editingInvoiceId = null;
+    public $editInvoiceStatus = 'draft';
+    public $editInvoiceDueDate = '';
+    public $editInvoiceNotes = '';
+
     // For Add Payment Modal
     public $showAddPaymentModal = false;
     public $payment_invoice_id = '';
     public $payment_amount = '';
     public $payment_date = '';
+    public $payment_method = 'bank_transfer';
     public $payment_notes = '';
 
     protected function rules()
@@ -618,6 +626,8 @@ new class extends Component {
 
     public function createInvoice()
     {
+        \Illuminate\Support\Facades\Gate::authorize('create invoices');
+
         if (empty($this->invoice_number)) {
             $this->dispatch('notify', message: 'Invoice number is required.', type: 'error');
             return;
@@ -626,7 +636,13 @@ new class extends Component {
         if (!$this->selectedProjectId) return;
 
         $businessId = Auth::user()->current_business_id;
-        $project = Project::find($this->selectedProjectId);
+        $project = Project::where('business_id', $businessId)->findOrFail($this->selectedProjectId);
+
+        // Ensure invoice number uniqueness
+        if (Invoice::where('invoice_number', $this->invoice_number)->where('business_id', $businessId)->exists()) {
+            $this->dispatch('notify', message: 'Invoice number already exists. Please use a unique number.', type: 'error');
+            return;
+        }
 
         $subtotal = 0;
         foreach ($this->invoiceLineItems as $item) {
@@ -634,10 +650,10 @@ new class extends Component {
             $price = floatval($item['unit_price'] ?? 0);
             $subtotal += $qty * $price;
         }
-        
+
         $taxRate = floatval($this->invoice_tax_rate ?? 0);
-        $taxTotal = $subtotal * ($taxRate / 100);
-        $total = $subtotal + $taxTotal;
+        $taxTotal = round($subtotal * ($taxRate / 100), 2);
+        $total = round($subtotal + $taxTotal, 2);
 
         $issueDateParsed = date('Y-m-d');
         if ($this->invoice_issue_date) {
@@ -647,41 +663,51 @@ new class extends Component {
             }
         }
 
+        $dueDateParsed = null;
+        if ($this->invoice_due_date) {
+            $ts = strtotime($this->invoice_due_date);
+            if ($ts !== false) {
+                $dueDateParsed = date('Y-m-d', $ts);
+            }
+        }
+
         $invoice = Invoice::create([
-            'business_id' => $businessId,
-            'project_id' => $project->id,
-            'client_id' => $project->client_id,
+            'business_id'    => $businessId,
+            'project_id'     => $project->id,
+            'client_id'      => $project->client_id,
             'invoice_number' => $this->invoice_number,
-            'title' => 'Invoice ' . $this->invoice_number,
-            'status' => 'unpaid',
-            'issue_date' => $issueDateParsed,
-            'due_date' => $this->invoice_due_date ?: null,
-            'subtotal' => $subtotal,
-            'tax_rate' => $taxRate,
-            'tax_total' => $taxTotal,
+            'title'          => 'Invoice ' . $this->invoice_number,
+            'status'         => 'draft',           // Canonical status value
+            'issue_date'     => $issueDateParsed,
+            'due_date'       => $dueDateParsed,
+            'subtotal'       => round($subtotal, 2),
+            'tax_rate'       => $taxRate,
+            'tax_total'      => $taxTotal,
             'discount_total' => 0,
-            'total' => $total,
-            'amount_paid' => 0,
-            'notes' => $this->invoice_notes ?: 'Thank you for your business.',
+            'total'          => $total,
+            'amount_paid'    => 0,
+            'notes'          => $this->invoice_notes ?: 'Thank you for your business.',
         ]);
 
         foreach ($this->invoiceLineItems as $item) {
             $qty = floatval($item['quantity'] ?? 1);
             $price = floatval($item['unit_price'] ?? 0);
-            $lineSubtotal = $qty * $price;
+            $lineSubtotal = round($qty * $price, 2);
+            $lineTax = round($lineSubtotal * ($taxRate / 100), 2);
 
             InvoiceItem::create([
-                'invoice_id' => $invoice->id,
+                'invoice_id'  => $invoice->id,
                 'description' => $item['description'] ?: 'Services',
-                'quantity' => $qty,
-                'unit_price' => $price,
-                'subtotal' => $lineSubtotal,
-                'tax' => 0.00,
-                'total' => $lineSubtotal,
+                'quantity'    => $qty,
+                'unit_price'  => $price,
+                'subtotal'    => $lineSubtotal,
+                'tax'         => $lineTax,
+                'total'       => $lineSubtotal + $lineTax,
             ]);
         }
 
         $this->showNewInvoiceModal = false;
+        $this->dispatch('close-invoice-modal');
         $this->dispatch('notify', message: 'Invoice created successfully.', type: 'success');
     }
 
@@ -690,6 +716,7 @@ new class extends Component {
         $this->payment_invoice_id = $invoiceId ?: '';
         $this->payment_amount = '';
         $this->payment_date = date('Y-m-d');
+        $this->payment_method = 'bank_transfer';
         $this->payment_notes = '';
         $this->showAddPaymentModal = true;
     }
@@ -697,10 +724,15 @@ new class extends Component {
     public function closeAddPaymentModal()
     {
         $this->showAddPaymentModal = false;
+        $this->payment_amount = '';
+        $this->payment_invoice_id = '';
+        $this->payment_notes = '';
     }
 
     public function savePayment()
     {
+        \Illuminate\Support\Facades\Gate::authorize('create payments');
+
         if (empty($this->payment_amount) || !is_numeric($this->payment_amount) || floatval($this->payment_amount) <= 0) {
             $this->dispatch('notify', message: 'Please enter a valid amount.', type: 'error');
             return;
@@ -709,70 +741,87 @@ new class extends Component {
         if (!$this->selectedProjectId) return;
 
         $businessId = Auth::user()->current_business_id;
-        $project = Project::with('invoices')->find($this->selectedProjectId);
-        if (!$project) return;
+        $project = Project::where('business_id', $businessId)->with('invoices')->findOrFail($this->selectedProjectId);
 
         $targetInvoice = null;
 
         if ($this->payment_invoice_id) {
-            $targetInvoice = Invoice::find($this->payment_invoice_id);
+            // Verify the invoice belongs to this project & business
+            $targetInvoice = Invoice::where('project_id', $project->id)
+                ->where('business_id', $businessId)
+                ->find($this->payment_invoice_id);
         } else {
-            $targetInvoice = $project->invoices->where('status', '!=', 'paid')->first();
+            // Pick first unpaid/partial invoice for this project
+            $targetInvoice = $project->invoices->whereNotIn('status', ['paid', 'cancelled'])->first();
         }
 
-        $amount = floatval($this->payment_amount);
+        $amount = round(floatval($this->payment_amount), 2);
 
         if (!$targetInvoice) {
+            // Auto-create a simple invoice if none exists
             $count = $project->invoices->count() + 1;
-            $slug = strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $project->name), 0, 3));
+            $slug  = strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $project->name), 0, 3));
             $invNumber = 'INV-' . ($slug ?: 'PRJ') . '-' . date('Ymd') . '-' . $count;
+            // Ensure uniqueness
+            while (Invoice::where('invoice_number', $invNumber)->where('business_id', $businessId)->exists()) {
+                $invNumber .= '-' . rand(1, 99);
+            }
 
             $targetInvoice = Invoice::create([
-                'business_id' => $businessId,
-                'project_id' => $project->id,
-                'client_id' => $project->client_id,
+                'business_id'    => $businessId,
+                'project_id'     => $project->id,
+                'client_id'      => $project->client_id,
                 'invoice_number' => $invNumber,
-                'title' => 'Invoice ' . $invNumber,
-                'status' => 'unpaid',
-                'issue_date' => date('Y-m-d'),
-                'due_date' => date('Y-m-d', strtotime('+8 days')),
-                'subtotal' => $amount,
-                'tax_total' => 0,
-                'total' => $amount,
-                'amount_paid' => 0,
-                'notes' => $this->payment_notes ?: 'Thank you for your business.',
+                'title'          => 'Invoice ' . $invNumber,
+                'status'         => 'draft',
+                'issue_date'     => date('Y-m-d'),
+                'due_date'       => date('Y-m-d', strtotime('+8 days')),
+                'subtotal'       => $amount,
+                'tax_rate'       => 0,
+                'tax_total'      => 0,
+                'discount_total' => 0,
+                'total'          => $amount,
+                'amount_paid'    => 0,
+                'notes'          => $this->payment_notes ?: 'Thank you for your business.',
             ]);
 
             InvoiceItem::create([
-                'invoice_id' => $targetInvoice->id,
-                'description' => $this->payment_notes ?: 'Project Payment Item',
-                'quantity' => 1,
-                'unit_price' => $amount,
-                'subtotal' => $amount,
-                'tax' => 0,
-                'total' => $amount,
+                'invoice_id'  => $targetInvoice->id,
+                'description' => $this->payment_notes ?: 'Project Payment',
+                'quantity'    => 1,
+                'unit_price'  => $amount,
+                'subtotal'    => $amount,
+                'tax'         => 0,
+                'total'       => $amount,
             ]);
         }
 
         Payment::create([
-            'invoice_id' => $targetInvoice->id,
-            'amount' => $amount,
-            'paid_at' => date('Y-m-d'),
-            'payment_method' => 'Bank Transfer',
-            'notes' => $this->payment_notes ?: '',
+            'invoice_id'     => $targetInvoice->id,
+            'amount'         => $amount,
+            'paid_at'        => $this->payment_date ?: date('Y-m-d'),
+            'payment_method' => $this->payment_method ?: 'bank_transfer',
+            'notes'          => $this->payment_notes ?: '',
         ]);
 
-        $newAmountPaid = floatval($targetInvoice->payments()->sum('amount'));
-        $targetInvoice->amount_paid = $newAmountPaid;
-        if ($newAmountPaid >= floatval($targetInvoice->total) && floatval($targetInvoice->total) > 0) {
-            $targetInvoice->status = 'paid';
-        } else {
-            $targetInvoice->status = 'partially_paid';
-        }
-        $targetInvoice->save();
+        // Recalculate from DB (authoritative total)
+        $newAmountPaid = round((float) $targetInvoice->payments()->sum('amount'), 2);
+        $invoiceTotal  = round((float) $targetInvoice->total, 2);
 
-        $this->payment_amount = '';
-        $this->payment_notes = '';
+        $newStatus = 'partial';
+        if ($invoiceTotal > 0 && $newAmountPaid >= $invoiceTotal) {
+            $newStatus = 'paid';
+        } elseif ($newAmountPaid <= 0) {
+            $newStatus = 'sent';
+        }
+
+        $targetInvoice->update([
+            'amount_paid' => $newAmountPaid,
+            'status'      => $newStatus,
+        ]);
+
+        $this->payment_amount     = '';
+        $this->payment_notes      = '';
         $this->payment_invoice_id = '';
         $this->showAddPaymentModal = false;
         $this->dispatch('notify', message: 'Payment recorded successfully.', type: 'success');
@@ -780,21 +829,87 @@ new class extends Component {
 
     public function toggleInvoiceStatus($invoiceId)
     {
-        $invoice = Invoice::find($invoiceId);
-        if ($invoice) {
-            $invoice->status = $invoice->status === 'paid' ? 'unpaid' : 'paid';
-            $invoice->save();
-            $this->dispatch('notify', message: 'Invoice status updated.', type: 'success');
+        $businessId = Auth::user()->current_business_id;
+        $invoice = Invoice::where('business_id', $businessId)->find($invoiceId);
+        if (!$invoice) return;
+
+        if ($invoice->status === 'paid') {
+            // Revert to sent, clear amount_paid only if no real payments exist
+            $realPaid = round((float) $invoice->payments()->sum('amount'), 2);
+            $invoice->update([
+                'status'      => $realPaid > 0 ? 'partial' : 'sent',
+                'amount_paid' => $realPaid,
+            ]);
+            $this->dispatch('notify', message: 'Invoice marked as due.', type: 'success');
+        } else {
+            // Mark paid — add a payment record for the remaining balance
+            $remaining = max(0, round((float)$invoice->total - (float)$invoice->amount_paid, 2));
+            if ($remaining > 0) {
+                Payment::create([
+                    'invoice_id'     => $invoice->id,
+                    'amount'         => $remaining,
+                    'paid_at'        => date('Y-m-d'),
+                    'payment_method' => 'bank_transfer',
+                    'notes'          => 'Marked paid from project financials.',
+                ]);
+            }
+            $invoice->update([
+                'status'      => 'paid',
+                'amount_paid' => (float)$invoice->total,
+            ]);
+            $this->dispatch('notify', message: 'Invoice marked as paid.', type: 'success');
         }
     }
 
     public function deleteInvoice($invoiceId)
     {
-        $invoice = Invoice::find($invoiceId);
+        \Illuminate\Support\Facades\Gate::authorize('delete invoices');
+        $businessId = Auth::user()->current_business_id;
+        $invoice = Invoice::where('business_id', $businessId)->find($invoiceId);
         if ($invoice) {
+            $invoice->payments()->delete(); // Cascade: remove payments first
+            $invoice->items()->delete();    // Cascade: remove line items
             $invoice->delete();
             $this->dispatch('notify', message: 'Invoice deleted.', type: 'success');
         }
+    }
+
+    public function openEditInvoiceModal($invoiceId)
+    {
+        $businessId = Auth::user()->current_business_id;
+        $invoice = Invoice::where('business_id', $businessId)->find($invoiceId);
+        if (!$invoice) return;
+
+        $this->editingInvoiceId   = $invoice->id;
+        $this->editInvoiceStatus  = $invoice->status;
+        $this->editInvoiceDueDate = $invoice->due_date ? $invoice->due_date->format('Y-m-d') : '';
+        $this->editInvoiceNotes   = $invoice->notes ?? '';
+        $this->showEditInvoiceModal = true;
+    }
+
+    public function updateInvoice()
+    {
+        \Illuminate\Support\Facades\Gate::authorize('edit invoices');
+
+        $this->validate([
+            'editingInvoiceId'  => 'required|exists:invoices,id',
+            'editInvoiceStatus' => 'required|in:draft,sent,partial,paid,cancelled',
+            'editInvoiceDueDate'=> 'nullable|date',
+            'editInvoiceNotes'  => 'nullable|string|max:2000',
+        ]);
+
+        $businessId = Auth::user()->current_business_id;
+        $invoice = Invoice::where('business_id', $businessId)->findOrFail($this->editingInvoiceId);
+
+        $invoice->update([
+            'status'   => $this->editInvoiceStatus,
+            'due_date' => $this->editInvoiceDueDate ?: null,
+            'notes'    => $this->editInvoiceNotes,
+        ]);
+
+        $this->showEditInvoiceModal = false;
+        $this->editingInvoiceId = null;
+        $this->dispatch('notify', message: 'Invoice updated successfully.', type: 'success');
     }
 
     public function deletePaymentItem($paymentId)
@@ -1895,7 +2010,7 @@ new class extends Component {
                                                                 </button>
                                                             </div>
                                                             <div class="flex items-center gap-2">
-                                                                <button type="button" wire:click="openNewInvoiceModal" wire:key="btn-open-new-invoice-edit-{{ $inv->id }}" class="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-white">
+                                                                <button type="button" wire:click="openEditInvoiceModal({{ $inv->id }})" wire:key="btn-edit-inv-{{ $inv->id }}" class="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-white">
                                                                     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                                                                 </button>
                                                                 <button type="button" wire:click="deleteInvoice({{ $inv->id }})" class="p-1.5 text-rose-400 hover:text-rose-600 rounded-lg hover:bg-white">

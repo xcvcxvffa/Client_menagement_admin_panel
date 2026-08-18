@@ -71,9 +71,13 @@ $updated = function ($property, $value) {
 };
 
 $saveInvoice = function () {
+    \Illuminate\Support\Facades\Gate::authorize('create invoices');
+
+    $businessId = Auth::user()->current_business_id;
+
     $this->validate([
-        'client_id' => 'required|exists:clients,id',
-        'project_id' => 'nullable|exists:projects,id',
+        'client_id' => 'required|exists:clients,id,business_id,' . $businessId,
+        'project_id' => 'nullable|exists:projects,id,business_id,' . $businessId,
         'title' => 'required|string|max:255',
         'issue_date' => 'required|date',
         'due_date' => 'required|date|after_or_equal:issue_date',
@@ -86,9 +90,10 @@ $saveInvoice = function () {
 
     $this->calculateTotals();
 
-    $invoiceNumber = 'INV-' . strtoupper(Str::random(6));
-
-    $businessId = Auth::user()->current_business_id;
+    // Ensure invoice number uniqueness
+    do {
+        $invoiceNumber = 'INV-' . strtoupper(Str::random(6));
+    } while (Invoice::where('invoice_number', $invoiceNumber)->where('business_id', $businessId)->exists());
 
     $invoice = Invoice::create([
         'business_id' => $businessId,
@@ -100,7 +105,9 @@ $saveInvoice = function () {
         'issue_date' => $this->issue_date,
         'due_date' => $this->due_date,
         'subtotal' => $this->subtotal,
+        'tax_rate' => $this->taxRate,
         'tax_total' => $this->tax_total,
+        'discount_total' => 0,
         'total' => $this->total,
         'amount_paid' => 0,
         'notes' => $this->notes,
@@ -109,8 +116,8 @@ $saveInvoice = function () {
     foreach ($this->items as $item) {
         $qty = (float)$item['quantity'];
         $price = (float)$item['unit_price'];
-        $itemSubtotal = $qty * $price;
-        $itemTax = $itemSubtotal * ($this->taxRate / 100);
+        $itemSubtotal = round($qty * $price, 2);
+        $itemTax = round($itemSubtotal * ($this->taxRate / 100), 2);
 
         InvoiceItem::create([
             'invoice_id' => $invoice->id,
@@ -134,11 +141,12 @@ $saveInvoice = function () {
 };
 
 with(function () {
-    $clients = Client::orderBy('name')->get(['id', 'name', 'company_name']);
+    $businessId = Auth::user()->current_business_id;
+    $clients = Client::where('business_id', $businessId)->orderBy('name')->get(['id', 'name', 'company_name']);
     $projects = collect();
     
     if ($this->client_id) {
-        $projects = Project::where('client_id', $this->client_id)->orderBy('name')->get(['id', 'name']);
+        $projects = Project::where('business_id', $businessId)->where('client_id', $this->client_id)->orderBy('name')->get(['id', 'name']);
     }
     
     return [

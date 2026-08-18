@@ -12,9 +12,11 @@ state([
 
 $markPaid = function ($id) {
     \Illuminate\Support\Facades\Gate::authorize('edit invoices');
-    $invoice = Invoice::find($id);
+    $businessId = Auth::user()->current_business_id;
+    $invoice = Invoice::where('business_id', $businessId)->find($id);
+
     if ($invoice && $invoice->status !== 'paid') {
-        $amountToPay = max(0, $invoice->total - $invoice->amount_paid);
+        $amountToPay = max(0, round((float)$invoice->total - (float)$invoice->amount_paid, 2));
         if ($amountToPay > 0) {
             $invoice->payments()->create([
                 'amount' => $amountToPay,
@@ -41,7 +43,9 @@ $markPaid = function ($id) {
 
 $markSent = function ($id) {
     \Illuminate\Support\Facades\Gate::authorize('edit invoices');
-    $invoice = Invoice::find($id);
+    $businessId = Auth::user()->current_business_id;
+    $invoice = Invoice::where('business_id', $businessId)->find($id);
+
     if ($invoice && $invoice->status === 'draft') {
         $invoice->update(['status' => 'sent']);
         
@@ -57,7 +61,9 @@ $markSent = function ($id) {
 
 $deleteInvoice = function ($id) {
     \Illuminate\Support\Facades\Gate::authorize('delete invoices');
-    $invoice = Invoice::find($id);
+    $businessId = Auth::user()->current_business_id;
+    $invoice = Invoice::where('business_id', $businessId)->find($id);
+
     if ($invoice) {
         $invoiceNumber = $invoice->invoice_number;
         $clientId = $invoice->client_id;
@@ -77,7 +83,8 @@ $deleteInvoice = function ($id) {
 };
 
 with(function () {
-    $query = Invoice::with('client');
+    $businessId = Auth::user()->current_business_id;
+    $query = Invoice::where('business_id', $businessId)->with('client');
 
     if ($this->search) {
         $query->where(function($q) {
