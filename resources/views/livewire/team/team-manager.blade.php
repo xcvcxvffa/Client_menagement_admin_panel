@@ -17,6 +17,11 @@ state([
     'role' => '',
     'salary' => '',
     'notes' => '',
+    'showEditModal' => false,
+    'editingMemberId' => null,
+    'editingMemberName' => '',
+    'editingMemberEmail' => '',
+    'editingMemberRole' => '',
 ]);
 
 mount(function () {
@@ -115,14 +120,36 @@ $addMember = function () {
     $this->dispatch('notify', message: 'Team member added successfully! An invitation email has been sent to them.', type: 'success');
 };
 
-$updateRole = function ($teamMemberId, $newRole) {
+$editMember = function ($teamMemberId) {
     \Illuminate\Support\Facades\Gate::authorize('edit team');
-
-    if (empty($newRole)) return;
     
     $member = TeamMember::where('business_id', Auth::user()->current_business_id)->findOrFail($teamMemberId);
     
-    if ($member->user_id === Auth::id() && $newRole !== 'Admin') {
+    $this->editingMemberId = $member->id;
+    $this->editingMemberName = $member->user->name;
+    $this->editingMemberEmail = $member->user->email;
+    $this->editingMemberRole = $member->role;
+    $this->showEditModal = true;
+};
+
+$saveMemberRole = function () {
+    \Illuminate\Support\Facades\Gate::authorize('edit team');
+    
+    $this->validate([
+        'editingMemberId' => 'required|exists:team_members,id',
+        'editingMemberRole' => 'required|string',
+    ]);
+    
+    $member = TeamMember::where('business_id', Auth::user()->current_business_id)->findOrFail($this->editingMemberId);
+    
+    // Safety check: Prevent modifying owner accounts
+    if ($member->role === 'owner' || $member->role === 'Owner' || $member->user->hasRole('Owner')) {
+        $this->dispatch('notify', message: 'You cannot change the role of the primary owner.', type: 'error');
+        return;
+    }
+
+    // Protect own role change if only admin
+    if ($member->user_id === Auth::id() && $this->editingMemberRole !== 'Admin') {
         setPermissionsTeamId(Auth::user()->current_business_id);
         $adminUsers = User::role('Admin')->where('current_business_id', Auth::user()->current_business_id)->count();
         if ($adminUsers <= 1) {
@@ -130,12 +157,25 @@ $updateRole = function ($teamMemberId, $newRole) {
             return;
         }
     }
+    
+    // Verify that the role exists in the system
+    $roleExists = \Spatie\Permission\Models\Role::where('name', $this->editingMemberRole)
+        ->where(function ($q) {
+            $q->whereNull('business_id')
+              ->orWhere('business_id', Auth::user()->current_business_id);
+        })->exists();
 
-    $member->update(['role' => $newRole]);
+    if (!$roleExists) {
+        $this->dispatch('notify', message: 'The selected role is invalid.', type: 'error');
+        return;
+    }
 
+    $member->update(['role' => $this->editingMemberRole]);
+    
     setPermissionsTeamId(Auth::user()->current_business_id);
-    $member->user->syncRoles([$newRole]);
-
+    $member->user->syncRoles([$this->editingMemberRole]);
+    
+    $this->showEditModal = false;
     $this->dispatch('notify', message: 'Role updated successfully.', type: 'success');
 };
 
@@ -146,6 +186,12 @@ $removeMember = function ($teamMemberId) {
     
     if ($member->user_id === Auth::id()) {
         $this->dispatch('notify', message: 'You cannot remove yourself from the business here.', type: 'error');
+        return;
+    }
+
+    // Safety check: Prevent deleting owner accounts
+    if ($member->role === 'owner' || $member->role === 'Owner' || $member->user->hasRole('Owner')) {
+        $this->dispatch('notify', message: 'You cannot delete the primary owner of this business.', type: 'error');
         return;
     }
     
@@ -223,17 +269,27 @@ $removeMember = function ($teamMemberId) {
                                 <span class="text-[13px] text-gray-400 font-medium">{{ $member->created_at->format('d/m/Y') }}</span>
                             </td>
                             <td class="py-4 px-6 text-right">
-                                @if($member->user_id !== Auth::id())
-                                    @can('delete team')
-                                    <x-confirm-action action="removeMember({{ $member->id }})" title="Remove Member" message="Are you sure you want to remove this user from the business?" buttonText="Remove">
-                                        <x-slot:trigger>
-                                            <button type="button" class="text-gray-400 hover:text-rose-500 font-medium transition-colors">
-                                                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                            </button>
-                                        </x-slot:trigger>
-                                    </x-confirm-action>
-                                    @endcan
-                                @endif
+                                <div class="flex items-center justify-end space-x-3">
+                                    @if($member->user_id !== Auth::id())
+                                        @can('edit team')
+                                        <button type="button" wire:click="editMember({{ $member->id }})" class="text-gray-400 hover:text-[#ea580c] transition-colors">
+                                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                            </svg>
+                                        </button>
+                                        @endcan
+
+                                        @can('delete team')
+                                        <x-confirm-action action="removeMember({{ $member->id }})" title="Remove Member" message="Are you sure you want to remove this user from the business?" buttonText="Remove">
+                                            <x-slot:trigger>
+                                                <button type="button" class="text-gray-400 hover:text-rose-500 transition-colors">
+                                                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                                </button>
+                                            </x-slot:trigger>
+                                        </x-confirm-action>
+                                        @endcan
+                                    @endif
+                                </div>
                             </td>
                         </tr>
                     @endforeach
@@ -318,6 +374,60 @@ $removeMember = function ($teamMemberId) {
                         </button>
                         <button type="submit" class="w-full py-2.5 bg-[#ea580c] hover:bg-orange-600 text-white rounded-xl text-sm font-bold shadow-sm transition-colors">
                             Add Member
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Member Modal -->
+    <div x-show="$wire.showEditModal" class="fixed inset-0 z-50 overflow-y-auto" style="display: none;" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+        <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+            <div x-show="$wire.showEditModal" class="fixed inset-0 transition-opacity bg-gray-900/50 backdrop-blur-sm" aria-hidden="true"></div>
+            <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+            <div x-show="$wire.showEditModal" @click.away="$wire.showEditModal = false" class="inline-block w-full max-w-md overflow-hidden text-left align-bottom transition-all transform bg-white dark:bg-gray-850 rounded-2xl shadow-xl sm:my-8 sm:align-middle border border-gray-150 dark:border-gray-750">
+                <form wire:submit.prevent="saveMemberRole">
+                    <div class="px-6 py-5 flex items-center justify-between">
+                        <h3 class="text-xl font-bold text-gray-900 dark:text-white">Edit Team Member</h3>
+                        <button type="button" wire:click="$set('showEditModal', false)" class="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300">
+                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                    </div>
+                    
+                    <div class="px-6 pb-6 space-y-5">
+                        <!-- Member Name (Read-only) -->
+                        <div>
+                            <label class="block text-[13px] font-semibold text-gray-700 dark:text-gray-300 mb-2">Member Name</label>
+                            <input type="text" x-bind:value="$wire.editingMemberName" disabled readonly
+                                   class="w-full px-4 py-2.5 border border-gray-250 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 rounded-xl text-sm text-gray-500 cursor-not-allowed focus:outline-none" />
+                        </div>
+
+                        <!-- Email (Read-only) -->
+                        <div>
+                            <label class="block text-[13px] font-semibold text-gray-700 dark:text-gray-300 mb-2">Email Address</label>
+                            <input type="email" x-bind:value="$wire.editingMemberEmail" disabled readonly
+                                   class="w-full px-4 py-2.5 border border-gray-250 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 rounded-xl text-sm text-gray-500 cursor-not-allowed focus:outline-none" />
+                        </div>
+
+                        <!-- Role Selector -->
+                        <div>
+                            <label class="flex items-center text-[13px] font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                                <svg class="w-4 h-4 mr-1.5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                                Role *
+                            </label>
+                            <x-custom-select wire:model="editingMemberRole" placeholder="Select Role"
+                                :options="collect($availableRoles)->map(fn($r) => ['id' => $r->name, 'name' => $r->name])->toArray()" />
+                            @error('editingMemberRole') <span class="text-xs text-rose-500 mt-1 block">{{ $message }}</span> @enderror
+                        </div>
+                    </div>
+
+                    <div class="px-6 py-4 flex justify-between gap-3">
+                        <button type="button" wire:click="$set('showEditModal', false)" class="w-full py-2.5 bg-white border border-gray-250 rounded-xl text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors">
+                            Cancel
+                        </button>
+                        <button type="submit" class="w-full py-2.5 bg-[#ea580c] hover:bg-orange-600 text-white rounded-xl text-sm font-bold shadow-sm transition-colors">
+                            Save Changes
                         </button>
                     </div>
                 </form>
