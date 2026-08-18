@@ -1,4 +1,4 @@
-<div x-data="toastComponent()"
+<div x-data="toastComponent"
      @notify.window="add($event.detail)"
      class="fixed bottom-4 right-4 z-50 flex flex-col gap-3 w-full max-w-sm pointer-events-none"
      style="display: none;"
