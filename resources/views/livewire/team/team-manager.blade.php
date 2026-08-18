@@ -395,7 +395,7 @@ $removeMember = function ($teamMemberId) {
         <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
             <div x-show="$wire.showEditModal" class="fixed inset-0 transition-opacity bg-gray-900/50 backdrop-blur-sm" aria-hidden="true"></div>
             <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-            <div x-show="$wire.showEditModal" @click.away="$wire.showEditModal = false" class="inline-block w-full max-w-md overflow-hidden text-left align-bottom transition-all transform bg-white dark:bg-gray-850 rounded-2xl shadow-xl sm:my-8 sm:align-middle border border-gray-150 dark:border-gray-750">
+            <div x-show="$wire.showEditModal" @click.away="$wire.showEditModal = false" class="inline-block w-full max-w-md overflow-visible text-left align-bottom transition-all transform bg-white dark:bg-gray-850 rounded-2xl shadow-xl sm:my-8 sm:align-middle border border-gray-150 dark:border-gray-750">
                 <form wire:submit.prevent="saveMemberRole">
                     <div class="px-6 py-5 flex items-center justify-between">
                         <h3 class="text-xl font-bold text-gray-900 dark:text-white">Edit Team Member</h3>
@@ -419,24 +419,113 @@ $removeMember = function ($teamMemberId) {
                                    class="w-full px-4 py-2.5 border border-gray-250 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 rounded-xl text-sm text-gray-500 cursor-not-allowed focus:outline-none" />
                         </div>
 
-                        <!-- Role Selector -->
+                        <!-- Role Selector — custom searchable dropdown (inline Alpine, z-index safe) -->
                         <div>
                             <label class="flex items-center text-[13px] font-semibold text-gray-700 dark:text-gray-300 mb-2">
                                 <svg class="w-4 h-4 mr-1.5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
                                 Role *
                             </label>
-                            <div class="relative">
-                                <select wire:model="editingMemberRole"
-                                        class="w-full px-4 py-2.5 pr-10 border-2 border-gray-200 hover:border-gray-300 bg-white dark:bg-gray-800 dark:border-gray-700 rounded-xl text-sm font-medium text-gray-900 dark:text-white focus:ring-0 focus:border-black focus:outline-none transition-colors appearance-none cursor-pointer shadow-sm">
-                                    <option value="" disabled>Select a role</option>
-                                    @foreach($availableRoles as $availableRole)
-                                        <option value="{{ $availableRole->name }}">{{ $availableRole->name }}</option>
-                                    @endforeach
-                                </select>
-                                <div class="pointer-events-none absolute inset-y-0 right-3 flex items-center">
-                                    <svg class="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+
+                            <div
+                                x-data="{
+                                    open: false,
+                                    search: '',
+                                    focused: -1,
+                                    options: {{ json_encode($availableRoles->map(fn($r) => $r->name)->values()->toArray()) }},
+                                    get value() { return $wire.editingMemberRole; },
+                                    set value(v) { $wire.editingMemberRole = v; },
+                                    get filtered() {
+                                        if (!this.search) return this.options;
+                                        const q = this.search.toLowerCase();
+                                        return this.options.filter(o => o.toLowerCase().includes(q));
+                                    },
+                                    get selectedLabel() {
+                                        return this.value || 'Select a role';
+                                    },
+                                    selectItem(opt) {
+                                        this.value = opt;
+                                        this.open = false;
+                                        this.search = '';
+                                        this.focused = -1;
+                                    },
+                                    onKeydown(e) {
+                                        if (!this.open) {
+                                            if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') { this.open = true; e.preventDefault(); }
+                                            return;
+                                        }
+                                        if (e.key === 'Escape') { this.open = false; this.search = ''; return; }
+                                        if (e.key === 'ArrowDown') { e.preventDefault(); this.focused = Math.min(this.focused + 1, this.filtered.length - 1); this.$nextTick(() => { let el = this.$refs.list?.children[this.focused]; if (el) el.scrollIntoView({ block: 'nearest' }); }); }
+                                        if (e.key === 'ArrowUp')   { e.preventDefault(); this.focused = Math.max(this.focused - 1, 0); this.$nextTick(() => { let el = this.$refs.list?.children[this.focused]; if (el) el.scrollIntoView({ block: 'nearest' }); }); }
+                                        if (e.key === 'Enter' && this.focused >= 0 && this.focused < this.filtered.length) { e.preventDefault(); this.selectItem(this.filtered[this.focused]); }
+                                    },
+                                    openDropdown() { this.open = true; this.focused = this.options.indexOf(this.value); this.$nextTick(() => this.$refs.searchInput?.focus()); }
+                                }"
+                                x-on:keydown="onKeydown($event)"
+                                x-on:click.outside="open = false; search = '';"
+                                class="relative w-full"
+                            >
+                                {{-- Trigger button --}}
+                                <button type="button"
+                                        @click="openDropdown()"
+                                        class="w-full rounded-xl border-2 bg-white text-sm px-4 py-2.5 flex justify-between items-center transition-all duration-150 shadow-sm outline-none"
+                                        :class="open ? 'border-black text-gray-900' : 'border-gray-200 hover:border-gray-300 text-gray-500'">
+                                    <span class="truncate text-sm leading-5"
+                                          :class="value ? 'text-gray-900 font-medium' : 'text-gray-400 font-normal'"
+                                          x-text="selectedLabel"></span>
+                                    <svg class="h-4 w-4 flex-shrink-0 ml-2 transition-transform duration-200"
+                                         :class="open ? 'rotate-180 text-orange-500' : 'text-gray-400'"
+                                         fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
                                     </svg>
+                                </button>
+
+                                {{-- Dropdown panel — rendered above modal overflow via high z-index --}}
+                                <div x-show="open" x-cloak style="display:none;"
+                                     x-transition:enter="transition ease-out duration-100"
+                                     x-transition:enter-start="opacity-0 translate-y-1 scale-95"
+                                     x-transition:enter-end="opacity-100 translate-y-0 scale-100"
+                                     x-transition:leave="transition ease-in duration-75"
+                                     x-transition:leave-start="opacity-100 translate-y-0 scale-100"
+                                     x-transition:leave-end="opacity-0 translate-y-1 scale-95"
+                                     class="absolute z-[99999] left-0 right-0 mt-1.5 bg-white rounded-2xl border border-gray-100 shadow-xl p-1.5">
+
+                                    {{-- Search box --}}
+                                    <div class="px-2 pt-1 pb-1.5">
+                                        <div class="relative">
+                                            <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                                            </svg>
+                                            <input x-ref="searchInput"
+                                                   type="text"
+                                                   x-model="search"
+                                                   placeholder="Search roles…"
+                                                   class="w-full pl-8 pr-3 py-2 text-xs bg-gray-50 border border-gray-100 rounded-lg focus:outline-none focus:border-orange-400 focus:bg-white transition-colors"
+                                                   @keydown.stop />
+                                        </div>
+                                    </div>
+
+                                    {{-- Options list --}}
+                                    <div x-ref="list" class="max-h-52 overflow-y-auto space-y-0.5">
+                                        <template x-if="filtered.length === 0">
+                                            <div class="px-4 py-3 text-xs text-gray-400 text-center">No roles found</div>
+                                        </template>
+                                        <template x-for="(opt, idx) in filtered" :key="opt">
+                                            <div @click="selectItem(opt)"
+                                                 @mouseenter="focused = idx"
+                                                 class="flex items-center justify-between px-4 py-2.5 text-sm cursor-pointer select-none rounded-lg transition-colors duration-100"
+                                                 :class="[
+                                                     value === opt ? 'bg-orange-50 text-orange-600 font-semibold' : 'text-gray-700 font-normal hover:bg-gray-50 hover:text-gray-900',
+                                                     focused === idx && value !== opt ? 'bg-gray-100' : ''
+                                                 ]">
+                                                <span x-text="opt" class="leading-5 pr-3"></span>
+                                                <svg x-show="value === opt"
+                                                     class="h-4 w-4 flex-shrink-0 text-orange-500"
+                                                     fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+                                                </svg>
+                                            </div>
+                                        </template>
+                                    </div>
                                 </div>
                             </div>
                             @error('editingMemberRole') <span class="text-xs text-rose-500 mt-1 block">{{ $message }}</span> @enderror
