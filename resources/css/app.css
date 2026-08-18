@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    select {
+        @apply w-full rounded-xl border-2 border-gray-200 hover:border-gray-300 bg-white text-sm px-4 py-2.5 text-gray-700 transition-all duration-150 shadow-sm outline-none focus:border-black focus:text-gray-900 !important;
+        background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23ea580c' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M6 8l4 4 4-4'/%3e%3c/svg%3e") !important;
+        background-position: right 0.75rem center !important;
+        background-size: 1.25em 1.25em !important;
+        background-repeat: no-repeat !important;
+        appearance: none !important;
+    }
+
+    /* Custom Admin Panel Scrollbar (Slim, rounded pill thumb) */
+    ::-webkit-scrollbar {
+        width: 7px;
+        height: 7px;
+    }
+
+    ::-webkit-scrollbar-track {
+        background: transparent;
+        border-radius: 9999px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        background-color: #cbd5e1;
+        border-radius: 9999px;
+        transition: background-color 0.2s ease;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+        background-color: #94a3b8;
+    }
+
+    * {
+        scrollbar-width: thin;
+        scrollbar-color: #cbd5e1 transparent;
+    }
+}
