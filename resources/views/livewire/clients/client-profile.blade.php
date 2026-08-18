@@ -265,6 +265,11 @@ with(function () {
     </div>
 
     {{-- ── TAB CONTENT ─────────────────────────────────────────── --}}
+    <div class="relative mt-6">
+        <div wire:loading.delay.long wire:target="activeTab">
+            <x-skeleton-loader type="details" />
+        </div>
+        <div wire:loading.remove.delay.long wire:target="activeTab">
 
     {{-- CLIENT PORTAL TAB --}}
     @if($activeTab === 'general')
@@ -552,6 +557,9 @@ with(function () {
         </div>
     </div>
     @endif
+
+        </div>
+    </div>
 
     <!-- Edit Client Modal -->
     <div x-show="$wire.showEditModal" class="fixed inset-0 z-50 overflow-y-auto" style="display: none;">

@@ -176,7 +176,11 @@ new class extends Component {
         </div>
     @endif
 
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <div class="relative">
+        <div wire:loading.delay.long>
+            <x-skeleton-loader type="dashboard" />
+        </div>
+        <div wire:loading.remove.delay.long class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         @foreach($roles as $role)
             <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-150 shadow-sm p-6 flex flex-col h-full">
                 <div class="flex justify-between items-start mb-4">
@@ -222,6 +226,7 @@ new class extends Component {
                 </div>
             </div>
         @endforeach
+        </div>
     </div>
 
     <!-- Role Modal -->

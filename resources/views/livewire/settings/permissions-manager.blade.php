@@ -155,7 +155,11 @@ new class extends Component {
         </div>
     @endif
 
-    <div class="space-y-6">
+    <div class="relative">
+        <div wire:loading.delay.long>
+            <x-skeleton-loader type="dashboard" />
+        </div>
+        <div wire:loading.remove.delay.long class="space-y-6">
         @foreach($groupedPermissions as $module => $perms)
             <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-150 shadow-sm overflow-hidden">
                 <div class="bg-gray-50 dark:bg-gray-700/50 px-6 py-4 border-b border-gray-150 flex justify-between items-center">
@@ -195,6 +199,7 @@ new class extends Component {
                 </div>
             </div>
         @endforeach
+        </div>
     </div>
 
     <!-- Permission Modal -->

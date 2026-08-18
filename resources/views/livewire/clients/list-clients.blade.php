@@ -84,7 +84,12 @@ with(function () {
     </div>
 
     <!-- Clients Grid -->
-    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+    <div class="relative">
+        <div wire:loading.delay.long>
+            <x-skeleton-loader type="clients" count="6" />
+        </div>
+        <div wire:loading.remove.delay.long>
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         @foreach($clients as $client)
             <div class="bg-white border border-gray-100 rounded-xl shadow-sm hover:shadow-md transition-shadow">
                 <div class="p-5">
@@ -174,5 +179,7 @@ with(function () {
 
     <div class="mt-6">
         {{ $clients->links(data: ['scrollTo' => false]) }}
+    </div>
+        </div>
     </div>
 </div>

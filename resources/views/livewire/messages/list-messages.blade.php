@@ -350,9 +350,13 @@ $forwardMessage = function () {
 
 ?>
 
-<div class="h-full flex overflow-hidden" style="font-family:'Plus Jakarta Sans',sans-serif;"
-     x-data="{}"
-     @keydown.escape.window="$store.lb.close()">
+<div class="h-full flex flex-col overflow-hidden" style="font-family:'Plus Jakarta Sans',sans-serif;">
+    <div wire:loading.delay.long class="flex-1">
+        <x-skeleton-loader type="messages" />
+    </div>
+    <div wire:loading.remove.delay.long class="h-full flex overflow-hidden" style="font-family:'Plus Jakarta Sans',sans-serif;"
+         x-data="{}"
+         @keydown.escape.window="$store.lb.close()">
 
 <style>
     /* Scrollbar */
@@ -1254,5 +1258,6 @@ $forwardMessage = function () {
             </div>
         </div>
     @endif
+</div>
 </div>
 </div>

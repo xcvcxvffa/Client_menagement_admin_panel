@@ -349,7 +349,11 @@ with(function () {
     @endif
 
     <!-- ====================== KANBAN BOARD VIEW ====================== -->
-    <div class="flex gap-6 overflow-x-auto pb-4 pt-2 flex-grow min-h-0">
+    <div class="relative flex-grow min-h-0">
+        <div wire:loading.delay.long>
+            <x-skeleton-loader type="tasks" />
+        </div>
+        <div wire:loading.remove.delay.long class="flex gap-6 overflow-x-auto pb-4 pt-2 flex-grow min-h-0">
         @foreach($kanbanColumns as $status => $column)
             <div class="flex-1 min-w-[320px] bg-white border border-gray-100 rounded-2xl flex flex-col max-h-[75vh]"
                  @dragover="dragOver"
@@ -430,6 +434,7 @@ with(function () {
                 </div>
             </div>
         @endforeach
+        </div>
     </div>
 
     <!-- ====================== CREATE / EDIT MODAL ====================== -->

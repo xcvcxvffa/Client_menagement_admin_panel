@@ -380,6 +380,11 @@ function formatBytes($bytes, $precision = 2) {
             </div>
             </div>
 
+            <div class="relative min-h-[400px] w-full">
+                <div wire:loading.delay.long wire:target="search, activeTab, currentFolderId, setFilterType, viewMode, sortBy" class="w-full">
+                    <x-skeleton-loader type="table" rows="5" cols="4" />
+                </div>
+                <div wire:loading.remove.delay.long wire:target="search, activeTab, currentFolderId, setFilterType, viewMode, sortBy" class="w-full">
             @if($documents->count() > 0 || $folders->count() > 0)
             @if($viewMode === 'list')
             <div class="bg-white rounded-2xl border border-gray-100 shadow-sm">
@@ -649,6 +654,8 @@ function formatBytes($bytes, $precision = 2) {
                 @endif
             @endif
             @endif
+                </div>
+            </div>
         </div>
 
         <!-- RIGHT SIDEBAR (Chart & Stats) -->

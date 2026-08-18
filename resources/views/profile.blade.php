@@ -6,8 +6,11 @@
     </x-slot>
 
     <div class="py-8">
-        <div class="max-w-7xl mx-auto space-y-6">
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="max-w-7xl mx-auto space-y-6 relative">
+            <div wire:loading.delay.long class="w-full">
+                <x-skeleton-loader type="dashboard" />
+            </div>
+            <div wire:loading.remove.delay.long class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <!-- Column 1 -->
                 <div class="space-y-6">
                     <div class="p-6 sm:p-8 bg-white dark:bg-gray-800 border border-gray-150 rounded-2xl shadow-sm">
@@ -25,6 +28,7 @@
                         <livewire:profile.delete-user-form />
                     </div>
                 </div>
+            </div>
             </div>
         </div>
     </div>

@@ -81,6 +81,9 @@
         </style>
     </head>
     <body class="h-full bg-white text-gray-900 antialiased overflow-hidden" x-data="{ sidebarOpen: false, notifOpen: false }">
+        <!-- Top Navigation Loading Bar -->
+        <div id="top-loading-bar" class="fixed top-0 left-0 right-0 h-[3px] bg-[#ea580c] z-[99999] transition-all duration-300 ease-out" style="width: 0%; display: none; opacity: 1;"></div>
+        
         <div class="flex h-screen overflow-hidden bg-white">
             
             <!-- Mobile Sidebar Backdrop -->
@@ -263,6 +266,37 @@
                     backdrop.style.display = 'none';
                 }, 300);
             }
+
+            // Top Navigation Loading Bar listener
+            document.addEventListener('livewire:navigate', () => {
+                const bar = document.getElementById('top-loading-bar');
+                if (bar) {
+                    bar.style.display = 'block';
+                    bar.style.opacity = '1';
+                    bar.style.transition = 'none';
+                    bar.style.width = '0%';
+                    // Smoothly animate to 90%
+                    setTimeout(() => {
+                        bar.style.transition = 'width 8s cubic-bezier(0.08, 0.8, 0.1, 1)';
+                        bar.style.width = '90%';
+                    }, 10);
+                }
+            });
+
+            document.addEventListener('livewire:navigated', () => {
+                const bar = document.getElementById('top-loading-bar');
+                if (bar) {
+                    bar.style.transition = 'width 0.2s ease-out, opacity 0.2s ease-out';
+                    bar.style.width = '100%';
+                    setTimeout(() => {
+                        bar.style.opacity = '0';
+                        setTimeout(() => {
+                            bar.style.display = 'none';
+                            bar.style.width = '0%';
+                        }, 200);
+                    }, 200);
+                }
+            });
         </script>
     </body>
 </html>

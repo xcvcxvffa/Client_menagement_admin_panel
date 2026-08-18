@@ -386,7 +386,11 @@ $deletePayment = function () {
     </div>
 
     <!-- Payments Table -->
-    <div class="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
+    <div class="relative">
+        <div wire:loading.delay.long>
+            <x-skeleton-loader type="table" rows="7" cols="7" />
+        </div>
+        <div wire:loading.remove.delay.long class="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
         <div class="overflow-x-auto">
             <table class="w-full text-left border-collapse">
                 <thead>
@@ -453,6 +457,7 @@ $deletePayment = function () {
                     @endforelse
                 </tbody>
             </table>
+        </div>
         </div>
     </div>
 

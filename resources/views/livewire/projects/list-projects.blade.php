@@ -1002,7 +1002,13 @@ new class extends Component {
     <!-- Flash Message Block Removed for Global Toasts -->
 
     <!-- Kanban Columns (Matches Image 2) -->
-    <div class="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 px-8 pb-8 overflow-hidden min-h-0">
+    <div class="flex-grow flex flex-col overflow-hidden min-h-0 relative">
+        <div wire:loading.delay.long wire:target="search">
+            <div class="px-8 pb-8 flex-1">
+                <x-skeleton-loader type="projects" />
+            </div>
+        </div>
+        <div wire:loading.remove.delay.long wire:target="search" class="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 px-8 pb-8 overflow-hidden min-h-0">
         
         @php
             $columns = [
@@ -1099,6 +1105,7 @@ new class extends Component {
                 </div>
             </div>
         @endforeach
+        </div>
     </div>
 
     <!-- Unified Drawer (Create/Edit/View) -->
@@ -1662,7 +1669,11 @@ new class extends Component {
                         </div>
 
                         <!-- Tab Content Wrapper -->
-                        <div class="flex-1 overflow-y-auto p-10">
+                        <div class="flex-1 overflow-y-auto p-10 relative">
+                            <div wire:loading.delay.long wire:target="setViewTab">
+                                <x-skeleton-loader type="details" />
+                            </div>
+                            <div wire:loading.remove.delay.long wire:target="setViewTab">
                             
                             @if($viewTab === 'overview')
                                 @php
@@ -2249,6 +2260,7 @@ new class extends Component {
                                     <p class="text-sm text-gray-500">This feature is coming soon.</p>
                                 </div>
                             @endif
+                            </div>
                         </div>
                     @endif
                 @endif

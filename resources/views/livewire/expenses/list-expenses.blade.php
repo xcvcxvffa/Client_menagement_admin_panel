@@ -214,7 +214,11 @@ $deleteExpense = function ($id) {
         </div>
     @endif
 
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+    <div class="relative">
+        <div wire:loading.delay.long>
+            <x-skeleton-loader type="table" rows="6" cols="6" />
+        </div>
+        <div wire:loading.remove.delay.long class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
         <div class="overflow-x-auto">
             <table class="w-full text-left border-collapse">
                 <thead>
@@ -305,6 +309,7 @@ $deleteExpense = function ($id) {
                     @endforelse
                 </tbody>
             </table>
+        </div>
         </div>
     </div>
 

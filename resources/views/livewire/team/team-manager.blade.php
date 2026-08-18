@@ -254,7 +254,11 @@ $removeMember = function ($teamMemberId) {
         </div>
     @endif
 
-    <div class="bg-white dark:bg-gray-800 rounded-[14px] border border-gray-150 dark:border-gray-750 shadow-sm overflow-hidden">
+    <div class="relative">
+        <div wire:loading.delay.long>
+            <x-skeleton-loader type="table" rows="5" cols="5" />
+        </div>
+        <div wire:loading.remove.delay.long class="bg-white dark:bg-gray-800 rounded-[14px] border border-gray-150 dark:border-gray-750 shadow-sm overflow-hidden">
         <div class="overflow-x-auto">
             <table class="w-full text-left border-collapse">
                 <thead>
@@ -318,6 +322,7 @@ $removeMember = function ($teamMemberId) {
                     @endforeach
                 </tbody>
             </table>
+        </div>
         </div>
     </div>
 

@@ -96,7 +96,11 @@ $clientLTV = computed(function () {
 
 ?>
 
-<div class="space-y-6">
+<div class="relative w-full">
+    <div wire:loading.delay.long class="w-full">
+        <x-skeleton-loader type="dashboard" />
+    </div>
+    <div wire:loading.remove.delay.long class="space-y-6 w-full">
     <!-- Header -->
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -278,5 +282,6 @@ $clientLTV = computed(function () {
                 </tbody>
             </table>
         </div>
+    </div>
     </div>
 </div>

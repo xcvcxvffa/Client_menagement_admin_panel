@@ -262,7 +262,11 @@ new class extends Component {
     @endif
 
     <!-- Kanban Columns -->
-    <div class="flex-1 flex gap-6 overflow-x-auto pb-4">
+    <div class="relative flex-1">
+        <div wire:loading.delay.long wire:target="search, filterStatus">
+            <x-skeleton-loader type="tasks" />
+        </div>
+        <div wire:loading.remove.delay.long wire:target="search, filterStatus" class="flex-1 flex gap-6 overflow-x-auto pb-4">
         
         @php
             $columns = [
@@ -348,6 +352,7 @@ new class extends Component {
                 </div>
             </div>
         @endforeach
+        </div>
     </div>
 
     <!-- Unified Drawer (Create/Edit/View) -->
