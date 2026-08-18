@@ -50,7 +50,11 @@ with(function () {
 });
 
 $addMember = function () {
-    \Illuminate\Support\Facades\Gate::authorize('create team');
+    // Only the business Owner may add team members
+    if (!Auth::user()->isOwnerOfBusiness()) {
+        $this->dispatch('notify', message: 'Only the business Owner can add team members.', type: 'error');
+        return;
+    }
 
     $this->validate([
         'email' => 'required|email|max:255',
@@ -130,7 +134,11 @@ $addMember = function () {
 };
 
 $editMember = function ($teamMemberId) {
-    \Illuminate\Support\Facades\Gate::authorize('edit team');
+    // Only the business Owner may edit team member roles
+    if (!Auth::user()->isOwnerOfBusiness()) {
+        $this->dispatch('notify', message: 'Only the business Owner can edit team member roles.', type: 'error');
+        return;
+    }
     
     $member = TeamMember::where('business_id', Auth::user()->current_business_id)->findOrFail($teamMemberId);
     
@@ -142,7 +150,11 @@ $editMember = function ($teamMemberId) {
 };
 
 $saveMemberRole = function () {
-    \Illuminate\Support\Facades\Gate::authorize('edit team');
+    // Only the business Owner may save role changes
+    if (!Auth::user()->isOwnerOfBusiness()) {
+        $this->dispatch('notify', message: 'Only the business Owner can change team member roles.', type: 'error');
+        return;
+    }
     
     $this->validate([
         'editingMemberId' => 'required|exists:team_members,id',
@@ -189,7 +201,11 @@ $saveMemberRole = function () {
 };
 
 $removeMember = function ($teamMemberId) {
-    \Illuminate\Support\Facades\Gate::authorize('delete team');
+    // Only the business Owner may remove team members
+    if (!Auth::user()->isOwnerOfBusiness()) {
+        $this->dispatch('notify', message: 'Only the business Owner can remove team members.', type: 'error');
+        return;
+    }
 
     $member = TeamMember::where('business_id', Auth::user()->current_business_id)->findOrFail($teamMemberId);
     
@@ -216,14 +232,14 @@ $removeMember = function ($teamMemberId) {
             <h2 class="text-[22px] font-black text-gray-900 dark:text-white tracking-tight">Team Management</h2>
             <p class="text-[13px] text-gray-500 mt-1">Manage your agency team members and their roles</p>
         </div>
-        @can('create team')
+        @if(Auth::user()->isOwnerOfBusiness())
         <button wire:click="$set('showModal', true)" class="px-4 py-2.5 bg-[#ea580c] hover:bg-orange-600 text-white rounded-xl text-sm font-bold shadow-sm transition-colors flex items-center">
             <svg class="w-[18px] h-[18px] mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
             </svg>
             Add Team Member
         </button>
-        @endcan
+        @endif
     </div>
 
     @if (session()->has('message'))
@@ -280,15 +296,13 @@ $removeMember = function ($teamMemberId) {
                             <td class="py-4 px-6 text-right">
                                 <div class="flex items-center justify-end space-x-3">
                                     @if($member->user_id !== Auth::id())
-                                        @can('edit team')
+                                        @if(Auth::user()->isOwnerOfBusiness())
                                         <button type="button" wire:click="editMember({{ $member->id }})" class="text-gray-400 hover:text-[#ea580c] transition-colors">
                                             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                                 <path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                                             </svg>
                                         </button>
-                                        @endcan
 
-                                        @can('delete team')
                                         <x-confirm-action action="removeMember({{ $member->id }})" title="Remove Member" message="Are you sure you want to remove this user from the business?" buttonText="Remove">
                                             <x-slot:trigger>
                                                 <button type="button" class="text-gray-400 hover:text-rose-500 transition-colors">
@@ -296,7 +310,7 @@ $removeMember = function ($teamMemberId) {
                                                 </button>
                                             </x-slot:trigger>
                                         </x-confirm-action>
-                                        @endcan
+                                        @endif
                                     @endif
                                 </div>
                             </td>

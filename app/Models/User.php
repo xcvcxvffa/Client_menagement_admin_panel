@@ -59,4 +59,20 @@ class User extends Authenticatable
     {
         return $this->belongsTo(Business::class, 'current_business_id');
     }
+
+    /**
+     * Determine if this user is the Owner of a given business.
+     * Falls back to current_business_id when no $businessId is provided.
+     * Uses Spatie's team-scoped role check so multi-tenancy is respected.
+     */
+    public function isOwnerOfBusiness(?int $businessId = null): bool
+    {
+        $bizId = $businessId ?? $this->current_business_id;
+        if (!$bizId) {
+            return false;
+        }
+        setPermissionsTeamId($bizId);
+        return $this->hasRole('Owner');
+    }
+
 }
